@@ -1,5 +1,0 @@
-FROM mysql
-
-COPY ./genid.sh /usr/local/bin/genid.sh
-
-RUN genid.sh
