@@ -15,18 +15,20 @@ has been replaced with
 ```bash
 #...
 	# 1. No or empty grastate.dat file AND
-	# 2. DOCKER_TASK_SLOT is set AND
-	# 3. $DOCKER_TASK_SLOT == 1
+	# 2. GALERA_PRIMARY_HOST is set AND
+	# 3. $GALERA_PRIMARY_HOST == $(hostname)
 	# OR
 	# 1. The file exists and is not empty AND
 	# 2. The state indicates safe to bootstrap
-	if { [ ! -s "$DATADIR/grastate.dat" ] && [[ -v DOCKER_TASK_SLOT ]]  && [ $DOCKER_TASK_SLOT == "1" ]; } || \
+	if { [ ! -s "$DATADIR/grastate.dat" ] && [[ -v GALERA_PRIMARY_HOST ]]  && [ $GALERA_PRIMARY_HOST == $(hostname) ]; } || \
 	{ [ -s "$DATADIR/grastate.dat" ] && grep -q -F "safe_to_bootstrap: 1" "$DATADIR/grastate.dat"; }
 	then
 		# bootstrap
+		echo "=================== BOOTSTRAP ====================="
 		exec "$@" --wsrep-new-cluster
 	else
 		# normal start
+		echo "=================== NORMAL START ====================="
 		exec "$@"
 	fi
 #...
