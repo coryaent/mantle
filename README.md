@@ -24,7 +24,7 @@ has been replaced with
 	{ [ -s "$DATADIR/grastate.dat" ] && grep -q -F "safe_to_bootstrap: 1" "$DATADIR/grastate.dat"; }
 	then
 		# bootstrap
-		echo "=================== BOOTSTRAP ====================="
+		echo "==================== BOOTSTRAP ======================="
 		exec "$@" --wsrep-new-cluster
 	else
 		# normal start

@@ -121,7 +121,8 @@ mysql_get_config() {
 docker_temp_server_start() {
 	"$@" --skip-networking --default-time-zone=SYSTEM --socket="${SOCKET}" --wsrep_on=OFF \
 		--expire-logs-days=0 \
-		--loose-innodb_buffer_pool_load_at_startup=0 &
+		--loose-innodb_buffer_pool_load_at_startup=0 \
+		&
 	declare -g MARIADB_PID
 	MARIADB_PID=$!
 	mysql_note "Waiting for server startup"
@@ -133,7 +134,8 @@ docker_temp_server_start() {
 	fi
 	local i
 	for i in {30..0}; do
-		if docker_process_sql "${extraArgs[@]}" --database=mysql <<<'SELECT 1' &> /dev/null; then
+		if docker_process_sql "${extraArgs[@]}" --database=mysql \
+			<<<'SELECT 1' &> /dev/null; then
 			break
 		fi
 		sleep 1
@@ -202,9 +204,11 @@ docker_create_db_directories() {
 
 	if [ "$user" = "0" ]; then
 		# this will cause less disk access than `chown -R`
-		find "$DATADIR" \! -user mysql -exec chown mysql: '{}' +
+		find "$DATADIR" \! -user mysql \( -exec chown mysql: '{}' + -o -true \)
 		# See https://github.com/MariaDB/mariadb-docker/issues/363
-		find "${SOCKET%/*}" -maxdepth 0 \! -user mysql -exec chown mysql: '{}' \;
+		if [ "${SOCKET:0:1}" != '@' ]; then # not abstract sockets
+			find "${SOCKET%/*}" -maxdepth 0 \! -user mysql \( -exec chown mysql: '{}' \; -o -true \)
+		fi
 
 		# memory.pressure
 		local cgroup; cgroup=$(</proc/self/cgroup)
@@ -218,9 +222,7 @@ docker_create_db_directories() {
 }
 
 _mariadb_version() {
-        local mariaVersion="${MARIADB_VERSION##*:}"
-        mariaVersion="${mariaVersion%%[-+~]*}"
-	echo -n "${mariaVersion}-MariaDB"
+	echo -n "10.11.9-MariaDB"
 }
 
 # initializes the database directory
@@ -228,7 +230,18 @@ docker_init_database_dir() {
 	mysql_note "Initializing database files"
 	installArgs=( --datadir="$DATADIR" --rpm --auth-root-authentication-method=normal )
 	# "Other options are passed to mariadbd." (so we pass all "mariadbd" arguments directly here)
-	mariadb-install-db "${installArgs[@]}" "${@:2}" \
+
+	local mariadbdArgs=()
+	for arg in "${@:2}"; do
+		# Check if the argument contains whitespace
+		if [[ "$arg" =~ [[:space:]] ]]; then
+			mysql_warn "Not passing argument \'$arg\' to mariadb-install-db because mariadb-install-db does not support arguments with whitespace."
+		else
+			mariadbdArgs+=("$arg")
+		fi
+	done
+	mariadb-install-db "${installArgs[@]}" "${mariadbdArgs[@]}" \
+		--cross-bootstrap \
 		--skip-test-db \
 		--old-mode='UTF8_IS_UTF8MB3' \
 		--default-time-zone=SYSTEM --enforce-storage-engine= \
@@ -343,7 +356,7 @@ create_healthcheck_users() {
 	local maskPreserve
 	maskPreserve=$(umask -p)
 	umask 0077
-	echo -e "[mariadb-client]\\nport=$PORT\\nsocket=$SOCKET\\nuser=healthcheck\\npassword=$healthCheckConnectPass\\nprotocol=tcp\\n" > "$DATADIR"/.my-healthcheck.cnf
+	echo -e "[mariadb-client]\\nport=$PORT\\nsocket=$SOCKET\\nuser=healthcheck\\npassword=$healthCheckConnectPass\\n" > "$DATADIR"/.my-healthcheck.cnf
 	$maskPreserve
 }
 
@@ -516,7 +529,7 @@ docker_mariadb_init()
 			rm -rf "$DATADIR"/.init "$DATADIR"/.restore
 			if [ "$(id -u)" = "0" ]; then
 				# this will cause less disk access than `chown -R`
-				find "$DATADIR" \! -user mysql -exec chown mysql: '{}' +
+				find "$DATADIR" \! -user mysql \( -exec chown mysql: '{}' + -o -true \)
 			fi
 		done
 		if _check_if_upgrade_is_needed; then
@@ -699,23 +712,23 @@ _main() {
 		fi
 	fi
 
-	# 1. No or empty grastate.dat file AND
-	# 2. GALERA_PRIMARY_HOST is set AND
-	# 3. $GALERA_PRIMARY_HOST == $(hostname)
-	# OR
-	# 1. The file exists and is not empty AND
-	# 2. The state indicates safe to bootstrap
-	if { [ ! -s "$DATADIR/grastate.dat" ] && [[ -v GALERA_PRIMARY_HOST ]]  && [ $GALERA_PRIMARY_HOST == $(hostname) ]; } || \
-	{ [ -s "$DATADIR/grastate.dat" ] && grep -q -F "safe_to_bootstrap: 1" "$DATADIR/grastate.dat"; }
-	then
-		# bootstrap
-		echo "=================== BOOTSTRAP ====================="
-		exec "$@" --wsrep-new-cluster
-	else
-		# normal start
-		echo "=================== NORMAL START ====================="
-		exec "$@"
-	fi
+        # 1. No or empty grastate.dat file AND
+        # 2. GALERA_PRIMARY_HOST is set AND
+        # 3. $GALERA_PRIMARY_HOST == $(hostname)
+        # OR
+        # 1. The file exists and is not empty AND
+        # 2. The state indicates safe to bootstrap
+        if { [ ! -s "$DATADIR/grastate.dat" ] && [[ -v GALERA_PRIMARY_HOST ]]  && [ $GALERA_PRIMARY_HOST == $(hostname) ]; } || \
+        { [ -s "$DATADIR/grastate.dat" ] && grep -q -F "safe_to_bootstrap: 1" "$DATADIR/grastate.dat"; }
+        then
+                # bootstrap
+                echo "==================== BOOTSTRAP ======================="
+                exec "$@" --wsrep-new-cluster
+        else
+                # normal start
+                echo "=================== NORMAL START ====================="
+                exec "$@"
+        fi
 }
 
 # If we are sourced from elsewhere, don't perform any further actions

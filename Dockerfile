@@ -1,4 +1,4 @@
-FROM mariadb:lts
+FROM mariadb:11.4
 
 EXPOSE 4567
 
