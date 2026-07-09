@@ -15,12 +15,12 @@ has been replaced with
 ```bash
 #...
 	# 1. No or empty grastate.dat file AND
-	# 2. GALERA_PRIMARY_HOST is set AND
-	# 3. $GALERA_PRIMARY_HOST == $(hostname)
+	# 2. GALERA_INIT_HOST is set AND
+	# 3. $GALERA_INIT_HOST == $(hostname)
 	# OR
 	# 1. The file exists and is not empty AND
 	# 2. The state indicates safe to bootstrap
-	if { [ ! -s "$DATADIR/grastate.dat" ] && [[ -v GALERA_PRIMARY_HOST ]]  && [ $GALERA_PRIMARY_HOST == $(hostname) ]; } || \
+	if { [ ! -s "$DATADIR/grastate.dat" ] && [[ -v GALERA_INIT_HOST ]]  && [ $GALERA_INIT_HOST == $(hostname) ]; } || \
 	{ [ -s "$DATADIR/grastate.dat" ] && grep -q -F "safe_to_bootstrap: 1" "$DATADIR/grastate.dat"; }
 	then
 		# bootstrap
